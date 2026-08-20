@@ -1,5 +1,7 @@
 # Apitella Drift Check
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A GitHub Action that polls an [Apitella](https://apitella.io) source on demand and fails
 the build if schema drift, a failed assertion, a security finding, or a value-drift
 finding meets your severity threshold — turning the existing `assertions` feature into a
