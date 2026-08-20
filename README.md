@@ -13,10 +13,10 @@ It calls `POST /sources/:id/poll-now`, which runs a real poll synchronously and 
 
 ```yaml
 - name: Check for breaking API drift
-  uses: <owner>/<repo>@v1
+  uses: dodogeny/apitella-drift-check@v1
   with:
     api-key: ${{ secrets.APITELLA_API_KEY }}
-    source-id: "5a495582-9a9e-4c2e-8cac-4a0254486b75"
+    source-id: src_your_source_id
     fail-on-severity: breaking # optional, default: breaking
 ```
 
@@ -45,11 +45,11 @@ commit it.
 ```yaml
 - name: Check for API drift
   id: drift
-  uses: <owner>/<repo>@v1
+  uses: dodogeny/apitella-drift-check@v1
   continue-on-error: true
   with:
     api-key: ${{ secrets.APITELLA_API_KEY }}
-    source-id: "5a495582-9a9e-4c2e-8cac-4a0254486b75"
+    source-id: src_your_source_id
 
 - name: Notify on drift
   if: steps.drift.outputs.drifted == 'true'
