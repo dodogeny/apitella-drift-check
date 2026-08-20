@@ -1,0 +1,100 @@
+name: "Apitella Drift Check"
+description: "Poll an Apitella source and fail the build if schema drift or a failed assertion meets your severity threshold."
+author: "Apitella"
+branding:
+  icon: "activity"
+  color: "blue"
+
+inputs:
+  api-key:
+    description: "Apitella API key (apt_live_...). Store this as a repo/org secret, never inline."
+    required: true
+  source-id:
+    description: "The Apitella source UUID to poll. Found on the source's page, in the URL."
+    required: true
+  fail-on-severity:
+    description: "Minimum severity that fails this step: breaking, risky, notable, or cosmetic."
+    required: false
+    default: "breaking"
+  api-url:
+    description: "Apitella API base URL. Override only for self-hosted or local testing."
+    required: false
+    default: "https://api.apitella.io/v1"
+
+outputs:
+  drifted:
+    description: "\"true\" if this poll found any drift, assertion failure, security finding, or value-drift finding at all (regardless of severity)."
+    value: ${{ steps.poll.outputs.drifted }}
+  severity:
+    description: "The severity found: breaking, risky, notable, cosmetic, or empty if nothing was detected."
+    value: ${{ steps.poll.outputs.severity }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: poll
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        case "${{ inputs.fail-on-severity }}" in
+          breaking) threshold=3 ;;
+          risky) threshold=2 ;;
+          notable) threshold=1 ;;
+          cosmetic) threshold=0 ;;
+          *)
+            echo "::error::fail-on-severity must be one of: breaking, risky, notable, cosmetic (got \"${{ inputs.fail-on-severity }}\")"
+            exit 1
+            ;;
+        esac
+
+        response=$(curl --silent --show-error --fail-with-body \
+          --request POST \
+          --header "Authorization: Bearer ${{ inputs.api-key }}" \
+          "${{ inputs.api-url }}/sources/${{ inputs.source-id }}/poll-now") \
+          || {
+            echo "::error::Poll request failed. Check the source id and that the API key is valid."
+            echo "$response"
+            exit 1
+          }
+
+        drifted=$(echo "$response" | jq -r '.drifted')
+        severity=$(echo "$response" | jq -r '.severity // empty')
+        changes=$(echo "$response" | jq '.changes | length')
+        assertion_failures=$(echo "$response" | jq '.assertionFailures | length')
+        security_findings=$(echo "$response" | jq '.securityFindings | length')
+        value_drift_findings=$(echo "$response" | jq '.valueDriftFindings | length')
+
+        echo "drifted=$drifted" >> "$GITHUB_OUTPUT"
+        echo "severity=$severity" >> "$GITHUB_OUTPUT"
+
+        {
+          echo "### Apitella drift check"
+          if [ "$drifted" = "true" ]; then
+            echo "**Severity: $severity** — $changes schema change(s), $assertion_failures assertion failure(s), $security_findings security finding(s), $value_drift_findings value-drift finding(s)."
+          else
+            echo "No drift detected."
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        if [ "$drifted" != "true" ]; then
+          echo "No drift detected."
+          exit 0
+        fi
+
+        rank=0
+        case "$severity" in
+          breaking) rank=3 ;;
+          risky) rank=2 ;;
+          notable) rank=1 ;;
+          cosmetic) rank=0 ;;
+        esac
+
+        echo "Severity: $severity ($changes schema change(s), $assertion_failures assertion failure(s), $security_findings security finding(s), $value_drift_findings value-drift finding(s))"
+
+        if [ "$rank" -ge "$threshold" ]; then
+          echo "::error::Apitella detected $severity drift, at or above the fail-on-severity threshold ($( echo "${{ inputs.fail-on-severity }}" )). See the source's Drift history in the Apitella dashboard for details."
+          exit 1
+        else
+          echo "Drift detected but below the fail-on-severity threshold (${{ inputs.fail-on-severity }}) — not failing the build."
+        fi
