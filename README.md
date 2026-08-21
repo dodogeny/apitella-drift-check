@@ -70,7 +70,9 @@ GitHub-hosted runners — install it in your base image or add an `apt-get insta
 step first).
 
 Store the API key as a Jenkins credential (Manage Jenkins → Credentials) rather than in
-the pipeline script — referenced below as `apitella-api-key`.
+the pipeline script — referenced below as `apitella-api-key`. A ready-to-copy starting
+point is [`Jenkinsfile.example`](Jenkinsfile.example) — download it and adapt it rather
+than retyping this snippet.
 
 ```groovy
 pipeline {

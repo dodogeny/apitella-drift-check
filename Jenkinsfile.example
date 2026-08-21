@@ -1,0 +1,24 @@
+// Starting point, not something this repo runs -- copy the relevant bits into your own
+// Jenkinsfile. See README.md's "Jenkins" section for the full explanation, including why
+// jq needs installing on most agents.
+pipeline {
+    agent any
+
+    environment {
+        API_KEY = credentials('apitella-api-key')
+        SOURCE_ID = 'src_your_source_id'
+        FAIL_ON_SEVERITY = 'breaking' // optional, default: breaking
+    }
+
+    stages {
+        stage('Check for breaking API/MCP drift') {
+            steps {
+                sh '''
+                    curl -fsSL -o drift-check.sh \\
+                      https://raw.githubusercontent.com/dodogeny/apitella-drift-check/v1/drift-check.sh
+                    bash drift-check.sh
+                '''
+            }
+        }
+    }
+}
