@@ -28,6 +28,9 @@ outputs:
   severity:
     description: "The severity found: breaking, risky, notable, cosmetic, or empty if nothing was detected."
     value: ${{ steps.poll.outputs.severity }}
+  rate_limited:
+    description: "\"true\" if this run hit the Free-plan on-demand poll limit and wasn't checked -- unset otherwise. Does not fail the step."
+    value: ${{ steps.poll.outputs.rate_limited }}
 
 runs:
   using: "composite"

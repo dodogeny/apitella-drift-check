@@ -40,10 +40,20 @@ commit it.
 
 ## Outputs
 
-| Output     | Description                                                        |
-| ---------- | -------------------------------------------------------------------- |
-| `drifted`  | `"true"` if anything was detected at all, regardless of severity.    |
-| `severity` | `breaking`, `risky`, `notable`, `cosmetic`, or empty if nothing was found. |
+| Output          | Description                                                        |
+| ---------------- | -------------------------------------------------------------------- |
+| `drifted`        | `"true"` if anything was detected at all, regardless of severity.    |
+| `severity`       | `breaking`, `risky`, `notable`, `cosmetic`, or empty if nothing was found. |
+| `rate_limited`   | `"true"` if this run hit the Free-plan on-demand poll limit (see below) — unset otherwise. |
+
+## Free-plan rate limit
+
+On-demand polls (this action's whole job) are capped per source on the Free plan — enough
+for real CI usage, not a script hammering the same source in a loop. Hitting it **does not
+fail the build**: it means this run wasn't checked, not that it found a problem. You'll see
+a `::warning::` in the log and a note in the step summary instead, plus `rate_limited=true`
+on the step's output if a later step wants to react to it. Team accounts aren't subject to
+this limit.
 
 ## Example: only warn, never fail
 

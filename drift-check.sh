@@ -9,6 +9,11 @@
 # Sets GITHUB_OUTPUT/GITHUB_STEP_SUMMARY when those env vars are already set (i.e. running
 # inside a GitHub Actions step) -- skipped everywhere else, including Jenkins, so this
 # script runs standalone in any shell without erroring on an unset/empty file path.
+#
+# A 429 (Free-plan on-demand poll limit) is deliberately NOT treated as a failure the same
+# way a real API error is -- it means "we didn't check this time", not "we checked and it's
+# broken". Failing the build either way would block a legitimate merge for a reason that has
+# nothing to do with API safety, which is worse than just not checking that one run.
 set -euo pipefail
 
 : "${API_KEY:?API_KEY is required}"
@@ -27,15 +32,44 @@ case "$FAIL_ON_SEVERITY" in
     ;;
 esac
 
-response=$(curl --silent --show-error --fail-with-body \
+set +e
+response_with_status=$(curl --silent --show-error \
   --request POST \
   --header "Authorization: Bearer $API_KEY" \
-  "$API_URL/sources/$SOURCE_ID/poll-now") \
-  || {
-    echo "::error::Poll request failed. Check the source id and that the API key is valid."
-    echo "$response"
-    exit 1
-  }
+  --write-out '\n%{http_code}' \
+  "$API_URL/sources/$SOURCE_ID/poll-now")
+curl_exit=$?
+set -e
+
+if [ "$curl_exit" -ne 0 ]; then
+  echo "::error::Could not reach the Apitella API. Check API_URL and network connectivity."
+  exit 1
+fi
+
+http_status="${response_with_status##*$'\n'}"
+response="${response_with_status%$'\n'*}"
+
+if [ "$http_status" = "429" ]; then
+  message=$(echo "$response" | jq -r '.error // "Rate limit exceeded for on-demand polls on this source."')
+  echo "::warning::$message"
+  echo "Not failing the build for this -- it means this run wasn't checked, not that it found a problem."
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    echo "rate_limited=true" >> "$GITHUB_OUTPUT"
+  fi
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    {
+      echo "### Apitella drift check"
+      echo "⏱️ **Rate limited — not checked this run.** $message"
+    } >> "$GITHUB_STEP_SUMMARY"
+  fi
+  exit 0
+fi
+
+if [ "$http_status" -lt 200 ] || [ "$http_status" -ge 300 ]; then
+  echo "::error::Poll request failed (HTTP $http_status). Check the source id and that the API key is valid."
+  echo "$response"
+  exit 1
+fi
 
 drifted=$(echo "$response" | jq -r '.drifted')
 severity=$(echo "$response" | jq -r '.severity // empty')
