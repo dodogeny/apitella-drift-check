@@ -52,7 +52,7 @@ On-demand polls (this action's whole job) are capped per source on the Free plan
 for real CI usage, not a script hammering the same source in a loop. Hitting it **does not
 fail the build**: it means this run wasn't checked, not that it found a problem. You'll see
 a `::warning::` in the log and a note in the step summary instead, plus `rate_limited=true`
-on the step's output if a later step wants to react to it. Team accounts aren't subject to
+on the step's output if a later step wants to react to it. Pro accounts aren't subject to
 this limit.
 
 ## Example: only warn, never fail
