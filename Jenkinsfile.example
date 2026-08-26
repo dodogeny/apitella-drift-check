@@ -6,7 +6,7 @@ pipeline {
 
     environment {
         API_KEY = credentials('apitella-api-key')
-        SOURCE_ID = 'src_your_source_id'
+        SOURCE_ID = '<your-source-id>'
         FAIL_ON_SEVERITY = 'breaking' // optional, default: breaking
     }
 

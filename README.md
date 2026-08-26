@@ -21,7 +21,7 @@ two copies to keep in sync.
   uses: dodogeny/apitella-drift-check@v1
   with:
     api-key: ${{ secrets.APITELLA_API_KEY }}
-    source-id: src_your_source_id
+    source-id: <your-source-id>
     fail-on-severity: breaking # optional, default: breaking
 ```
 
@@ -88,7 +88,7 @@ this limit.
   continue-on-error: true
   with:
     api-key: ${{ secrets.APITELLA_API_KEY }}
-    source-id: src_your_source_id
+    source-id: <your-source-id>
 
 - name: Notify on drift
   if: steps.drift.outputs.drifted == 'true'
@@ -114,7 +114,7 @@ pipeline {
 
     environment {
         API_KEY = credentials('apitella-api-key')
-        SOURCE_ID = 'src_your_source_id'
+        SOURCE_ID = '<your-source-id>'
         FAIL_ON_SEVERITY = 'breaking' // optional, default: breaking
     }
 
