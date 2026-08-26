@@ -29,12 +29,36 @@ Find `source-id` in the URL of the source's page in the Apitella dashboard. Crea
 `api-key` under **Settings → API keys** and store it as a repo or org secret — never
 commit it.
 
+### Skip the dashboard: auto-register from a URL
+
+Don't have a source set up yet? Give it a URL instead of an id, and the action creates
+the source on its first run — every run after that finds the same one by URL instead of
+creating a duplicate, so this is safe to leave in place permanently, not just for a
+one-time setup:
+
+```yaml
+- name: Check for breaking API drift
+  uses: dodogeny/apitella-drift-check@v1
+  with:
+    api-key: ${{ secrets.APITELLA_API_KEY }}
+    source-url: https://mcp.example.com/mcp
+    source-name: My MCP server # optional, defaults to source-url
+    source-type: mcp # optional, "mcp" or "rest", default: mcp
+```
+
+`source-id` always wins if both are set. This is the whole point of a CI-first setup:
+add the workflow file, and monitoring exists — no trip through the dashboard required
+first.
+
 ## Inputs
 
 | Input              | Required | Default                       | Description                                                       |
 | ------------------ | -------- | ------------------------------ | ------------------------------------------------------------------ |
 | `api-key`           | yes      | —                               | Apitella API key (`apt_live_...`).                                 |
-| `source-id`         | yes      | —                               | The source UUID to poll.                                           |
+| `source-id`         | no       | —                               | The source UUID to poll. Leave unset to auto-register from `source-url` instead. |
+| `source-url`        | no       | —                               | Endpoint to monitor. Only used when `source-id` is unset — see auto-registration above. |
+| `source-name`       | no       | `source-url`                    | Display name for an auto-registered source. Ignored if `source-id` is set. |
+| `source-type`       | no       | `mcp`                           | `mcp` or `rest`, for an auto-registered source. Ignored if `source-id` is set. |
 | `fail-on-severity`  | no       | `breaking`                      | Minimum severity that fails the step: `breaking`, `risky`, `notable`, or `cosmetic`. |
 | `api-url`           | no       | `https://api.apitella.io/v1`    | Override for self-hosted or local testing.                         |
 
