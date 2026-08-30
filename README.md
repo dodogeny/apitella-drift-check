@@ -14,6 +14,10 @@ Both call `POST /sources/:id/poll-now`, which runs a real poll synchronously and
 the GitHub Action *is* `drift-check.sh` under the hood — one tested implementation, not
 two copies to keep in sync.
 
+For a source with shadow-mode relay enabled, the same response also carries
+`recentRelayFindings` (blocked calls from live traffic, not this poll) — see
+[Shadow-mode relay](#shadow-mode-relay) below.
+
 ## GitHub Actions
 
 ```yaml
@@ -60,6 +64,7 @@ first.
 | `source-name`       | no       | `source-url`                    | Display name for an auto-registered source. Ignored if `source-id` is set. |
 | `source-type`       | no       | `mcp`                           | `mcp` or `rest`, for an auto-registered source. Ignored if `source-id` is set. |
 | `fail-on-severity`  | no       | `breaking`                      | Minimum severity that fails the step: `breaking`, `risky`, `notable`, or `cosmetic`. |
+| `fail-on-relay-blocks` | no    | —                               | Fail the step if shadow-mode relay has blocked at least this many calls recently. See [Shadow-mode relay](#shadow-mode-relay). |
 | `api-url`           | no       | `https://api.apitella.io/v1`    | Override for self-hosted or local testing.                         |
 
 ## Outputs
@@ -69,6 +74,30 @@ first.
 | `drifted`        | `"true"` if anything was detected at all, regardless of severity.    |
 | `severity`       | `breaking`, `risky`, `notable`, `cosmetic`, or empty if nothing was found. |
 | `rate_limited`   | `"true"` if this run hit the Free-plan on-demand poll limit (see below) — unset otherwise. |
+| `relay_blocked_call_count` | Blocked call count from shadow-mode relay in the recent window, or empty if the source doesn't have relay enabled. |
+
+## Shadow-mode relay
+
+If the source being polled has [shadow-mode relay](https://apitella.io/features#relay)
+enabled, `poll-now`'s response also carries a rollup of *recent live relay traffic* — a
+real call the relay watched or blocked, not something this poll itself found. It's a
+separate signal from schema drift: a build can be fully clean on the drift/assertion/
+security checks above and still be worth failing because production traffic is actively
+getting blocked.
+
+```yaml
+- name: Check for breaking API drift
+  uses: dodogeny/apitella-drift-check@v1
+  with:
+    api-key: ${{ secrets.APITELLA_API_KEY }}
+    source-id: <your-source-id>
+    fail-on-relay-blocks: 1 # optional, unset by default
+```
+
+`fail-on-relay-blocks` is independent of `fail-on-severity` — either can fail the step on
+its own. Leave it unset (the default) to ignore relay activity entirely, same as before
+this existed. It only has anything to check for a source with relay turned on; set but
+irrelevant otherwise.
 
 ## Free-plan rate limit
 

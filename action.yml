@@ -26,6 +26,9 @@ inputs:
     description: "Minimum severity that fails this step: breaking, risky, notable, or cosmetic."
     required: false
     default: "breaking"
+  fail-on-relay-blocks:
+    description: "Fail this step if shadow-mode relay has blocked at least this many calls recently. Unset by default -- fully opt-in, and independent of fail-on-severity (a quiet poll with a busy relay still fails when this is set). Only meaningful for a source with relay enabled; has nothing to check otherwise."
+    required: false
   api-url:
     description: "Apitella API base URL. Override only for self-hosted or local testing."
     required: false
@@ -41,6 +44,9 @@ outputs:
   rate_limited:
     description: "\"true\" if this run hit the Free-plan on-demand poll limit and wasn't checked -- unset otherwise. Does not fail the step."
     value: ${{ steps.poll.outputs.rate_limited }}
+  relay_blocked_call_count:
+    description: "Blocked call count from shadow-mode relay in the recent window, or empty if the source doesn't have relay enabled."
+    value: ${{ steps.poll.outputs.relay_blocked_call_count }}
 
 runs:
   using: "composite"
@@ -54,5 +60,6 @@ runs:
         SOURCE_NAME: ${{ inputs.source-name }}
         SOURCE_TYPE: ${{ inputs.source-type }}
         FAIL_ON_SEVERITY: ${{ inputs.fail-on-severity }}
+        FAIL_ON_RELAY_BLOCKS: ${{ inputs.fail-on-relay-blocks }}
         API_URL: ${{ inputs.api-url }}
       run: bash "$GITHUB_ACTION_PATH/drift-check.sh"
