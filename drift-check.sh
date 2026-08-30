@@ -5,7 +5,8 @@
 #
 # Required:  API_KEY, and either SOURCE_ID or SOURCE_URL (see "Auto-registration" below)
 # Optional:  SOURCE_NAME, SOURCE_TYPE (default: mcp, only used with SOURCE_URL),
-#            FAIL_ON_SEVERITY (default: breaking), API_URL (default: https://api.apitella.io/v1)
+#            FAIL_ON_SEVERITY (default: breaking), API_URL (default: https://api.apitella.io/v1),
+#            FAIL_ON_RELAY_BLOCKS (unset by default -- see "Shadow-mode relay" below)
 #
 # Sets GITHUB_OUTPUT/GITHUB_STEP_SUMMARY when those env vars are already set (i.e. running
 # inside a GitHub Actions step) -- skipped everywhere else, including Jenkins, so this
@@ -24,6 +25,10 @@ SOURCE_ID="${SOURCE_ID:-}"
 SOURCE_URL="${SOURCE_URL:-}"
 SOURCE_NAME="${SOURCE_NAME:-}"
 SOURCE_TYPE="${SOURCE_TYPE:-mcp}"
+# Unset by default -- fully opt-in, independent of FAIL_ON_SEVERITY. Only meaningful for a
+# source with shadow-mode relay turned on; poll-now omits recentRelayFindings entirely for
+# every other source, so this has nothing to check against them.
+FAIL_ON_RELAY_BLOCKS="${FAIL_ON_RELAY_BLOCKS:-}"
 
 if [ -z "$SOURCE_ID" ] && [ -z "$SOURCE_URL" ]; then
   echo "::error::Either SOURCE_ID (an existing source) or SOURCE_URL (to find-or-create one) is required."
@@ -102,6 +107,15 @@ case "$FAIL_ON_SEVERITY" in
     ;;
 esac
 
+case "$FAIL_ON_RELAY_BLOCKS" in
+  "" | *[!0-9]*)
+    if [ -n "$FAIL_ON_RELAY_BLOCKS" ]; then
+      echo "::error::FAIL_ON_RELAY_BLOCKS must be a non-negative integer (got \"$FAIL_ON_RELAY_BLOCKS\")"
+      exit 1
+    fi
+    ;;
+esac
+
 set +e
 response_with_status=$(curl --silent --show-error \
   --request POST \
@@ -147,10 +161,15 @@ changes=$(echo "$response" | jq '.changes | length')
 assertion_failures=$(echo "$response" | jq '.assertionFailures | length')
 security_findings=$(echo "$response" | jq '.securityFindings | length')
 value_drift_findings=$(echo "$response" | jq '.valueDriftFindings | length')
+# Empty (not "null") when the source doesn't have shadow-mode relay enabled -- poll-now
+# omits recentRelayFindings entirely for those sources, distinct from "relay is on but
+# nothing happened," which would come back as 0.
+relay_blocked_count=$(echo "$response" | jq -r '.recentRelayFindings.blockedCallCount // empty')
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   echo "drifted=$drifted" >> "$GITHUB_OUTPUT"
   echo "severity=$severity" >> "$GITHUB_OUTPUT"
+  echo "relay_blocked_call_count=$relay_blocked_count" >> "$GITHUB_OUTPUT"
 fi
 
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
@@ -161,27 +180,51 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     else
       echo "No drift detected."
     fi
+    if [ -n "$relay_blocked_count" ]; then
+      echo "Shadow-mode relay: $relay_blocked_count blocked call(s) recently."
+    fi
   } >> "$GITHUB_STEP_SUMMARY"
 fi
 
-if [ "$drifted" != "true" ]; then
+# Two independent gates, either of which can fail the build: drift severity (only
+# meaningful when drifted=true) and relay blocks (only meaningful when relay is enabled and
+# FAIL_ON_RELAY_BLOCKS is set). A quiet poll with a busy relay should still fail the build
+# when relay blocking is what's configured to matter.
+build_failed=false
+
+if [ "$drifted" = "true" ]; then
+  rank=0
+  case "$severity" in
+    breaking) rank=3 ;;
+    risky) rank=2 ;;
+    notable) rank=1 ;;
+    cosmetic) rank=0 ;;
+  esac
+
+  echo "Severity: $severity ($changes schema change(s), $assertion_failures assertion failure(s), $security_findings security finding(s), $value_drift_findings value-drift finding(s))"
+
+  if [ "$rank" -ge "$threshold" ]; then
+    echo "::error::Apitella detected $severity drift, at or above the fail-on-severity threshold ($FAIL_ON_SEVERITY). See the source's Drift history in the Apitella dashboard for details."
+    build_failed=true
+  else
+    echo "Drift detected but below the fail-on-severity threshold ($FAIL_ON_SEVERITY) — not failing the build for this."
+  fi
+else
   echo "No drift detected."
-  exit 0
 fi
 
-rank=0
-case "$severity" in
-  breaking) rank=3 ;;
-  risky) rank=2 ;;
-  notable) rank=1 ;;
-  cosmetic) rank=0 ;;
-esac
+if [ -n "$FAIL_ON_RELAY_BLOCKS" ]; then
+  if [ -z "$relay_blocked_count" ]; then
+    echo "FAIL_ON_RELAY_BLOCKS is set, but this source doesn't have shadow-mode relay enabled -- nothing to check."
+  else
+    echo "Shadow-mode relay: $relay_blocked_count blocked call(s) recently."
+    if [ "$relay_blocked_count" -ge "$FAIL_ON_RELAY_BLOCKS" ]; then
+      echo "::error::Shadow-mode relay blocked $relay_blocked_count call(s), at or above fail-on-relay-blocks ($FAIL_ON_RELAY_BLOCKS). See the source's Relay analytics in the Apitella dashboard for details."
+      build_failed=true
+    fi
+  fi
+fi
 
-echo "Severity: $severity ($changes schema change(s), $assertion_failures assertion failure(s), $security_findings security finding(s), $value_drift_findings value-drift finding(s))"
-
-if [ "$rank" -ge "$threshold" ]; then
-  echo "::error::Apitella detected $severity drift, at or above the fail-on-severity threshold ($FAIL_ON_SEVERITY). See the source's Drift history in the Apitella dashboard for details."
+if [ "$build_failed" = "true" ]; then
   exit 1
-else
-  echo "Drift detected but below the fail-on-severity threshold ($FAIL_ON_SEVERITY) — not failing the build."
 fi

@@ -8,6 +8,7 @@ pipeline {
         API_KEY = credentials('apitella-api-key')
         SOURCE_ID = '<your-source-id>'
         FAIL_ON_SEVERITY = 'breaking' // optional, default: breaking
+        // FAIL_ON_RELAY_BLOCKS = '1' // optional, unset by default -- see README.md's "Shadow-mode relay"
     }
 
     stages {
